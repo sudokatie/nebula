@@ -8,4 +8,4 @@ pub use cpu::CpuRenderer;
 mod gpu;
 
 #[cfg(feature = "gpu")]
-pub use gpu::GpuRenderer;
+pub use gpu::{GpuRenderer, GpuConfig};
