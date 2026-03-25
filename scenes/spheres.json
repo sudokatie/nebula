@@ -1,0 +1,28 @@
+{
+  "camera": {
+    "position": [13, 2, 3],
+    "look_at": [0, 0, 0],
+    "up": [0, 1, 0],
+    "fov": 20,
+    "aperture": 0.1,
+    "focus_distance": 10
+  },
+  "settings": {
+    "width": 1200,
+    "height": 800,
+    "samples": 100,
+    "depth": 50
+  },
+  "materials": [
+    {"name": "ground", "type": "lambertian", "albedo": [0.5, 0.5, 0.5]},
+    {"name": "glass", "type": "dielectric", "ior": 1.5},
+    {"name": "diffuse_center", "type": "lambertian", "albedo": [0.4, 0.2, 0.1]},
+    {"name": "metal_right", "type": "metal", "albedo": [0.7, 0.6, 0.5], "roughness": 0.0}
+  ],
+  "objects": [
+    {"type": "sphere", "center": [0, -1000, 0], "radius": 1000, "material": "ground"},
+    {"type": "sphere", "center": [0, 1, 0], "radius": 1.0, "material": "glass"},
+    {"type": "sphere", "center": [-4, 1, 0], "radius": 1.0, "material": "diffuse_center"},
+    {"type": "sphere", "center": [4, 1, 0], "radius": 1.0, "material": "metal_right"}
+  ]
+}

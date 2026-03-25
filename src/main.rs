@@ -1,5 +1,10 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::time::Instant;
+
+use nebula::scene::load_scene;
+use nebula::render::CpuRenderer;
+use nebula::output::{save_png, save_ppm};
 
 #[derive(Parser)]
 #[command(name = "nebula")]
@@ -20,21 +25,21 @@ enum Commands {
         #[arg(short, long, default_value = "output.png")]
         output: PathBuf,
 
-        /// Image width
-        #[arg(short = 'W', long, default_value_t = 800)]
-        width: u32,
+        /// Image width (overrides scene)
+        #[arg(short = 'W', long)]
+        width: Option<u32>,
 
-        /// Image height
-        #[arg(short = 'H', long, default_value_t = 600)]
-        height: u32,
+        /// Image height (overrides scene)
+        #[arg(short = 'H', long)]
+        height: Option<u32>,
 
-        /// Samples per pixel
-        #[arg(short, long, default_value_t = 100)]
-        samples: u32,
+        /// Samples per pixel (overrides scene)
+        #[arg(short, long)]
+        samples: Option<u32>,
 
-        /// Maximum ray depth
-        #[arg(short, long, default_value_t = 50)]
-        depth: u32,
+        /// Maximum ray depth (overrides scene)
+        #[arg(short, long)]
+        depth: Option<u32>,
 
         /// Number of threads (0 = auto)
         #[arg(short, long, default_value_t = 0)]
@@ -65,7 +70,7 @@ fn main() {
 
     match cli.command {
         Commands::Render {
-            scene,
+            scene: scene_path,
             output,
             width,
             height,
@@ -74,17 +79,60 @@ fn main() {
             threads,
             gpu,
         } => {
-            println!("Rendering scene: {}", scene.display());
-            println!("Output: {}", output.display());
+            // Load scene
+            println!("Loading scene: {}", scene_path.display());
+            let (scene, camera, settings) = match load_scene(&scene_path) {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("Error loading scene: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            // Apply overrides
+            let width = width.unwrap_or(settings.width);
+            let height = height.unwrap_or(settings.height);
+            let samples = samples.unwrap_or(settings.samples_per_pixel);
+            let depth = depth.unwrap_or(settings.max_depth);
+
             println!("Resolution: {}x{}", width, height);
             println!("Samples: {}, Depth: {}", samples, depth);
-            println!("Threads: {}", if threads == 0 { "auto".to_string() } else { threads.to_string() });
+
             if gpu {
-                println!("GPU rendering enabled");
+                eprintln!("GPU rendering not yet implemented");
+                std::process::exit(1);
             }
 
-            // TODO: Load scene and render
-            println!("Rendering not yet implemented");
+            // Render
+            let renderer = CpuRenderer::new(width, height, samples, depth);
+            let start = Instant::now();
+            
+            let pixels = if threads == 1 {
+                println!("Rendering (single-threaded)...");
+                renderer.render(&scene, &camera)
+            } else {
+                let t = if threads == 0 { rayon::current_num_threads() } else { threads };
+                println!("Rendering ({} threads)...", t);
+                renderer.render_parallel(&scene, &camera, threads)
+            };
+
+            let elapsed = start.elapsed();
+            println!("Rendered in {:.2}s", elapsed.as_secs_f64());
+
+            // Save output
+            let result = if output.extension().map(|e| e == "ppm").unwrap_or(false) {
+                save_ppm(&output, &pixels, width, height)
+            } else {
+                save_png(&output, &pixels, width, height)
+            };
+
+            match result {
+                Ok(()) => println!("Saved to {}", output.display()),
+                Err(e) => {
+                    eprintln!("Error saving image: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Preview { scene, width, height } => {
             println!("Preview mode: {} ({}x{})", scene.display(), width, height);
