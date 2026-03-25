@@ -90,13 +90,22 @@ impl BVH {
     /// Test ray against BVH
     pub fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         match &self.root {
-            Some(node) => self.hit_node(node, ray, t_min, t_max),
+            Some(node) => {
+                // Precompute inverse direction for faster AABB tests
+                let inv_dir = crate::math::Vec3::new(
+                    1.0 / ray.direction.x,
+                    1.0 / ray.direction.y,
+                    1.0 / ray.direction.z,
+                );
+                self.hit_node(node, ray, &inv_dir, t_min, t_max)
+            }
             None => None,
         }
     }
 
-    fn hit_node(&self, node: &BVHNode, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
-        if !node.bounds.hit(ray, t_min, t_max) {
+    fn hit_node(&self, node: &BVHNode, ray: &Ray, inv_dir: &crate::math::Vec3, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        // Use precomputed inverse direction for faster AABB test
+        if !node.bounds.hit_precomputed(&ray.origin, inv_dir, t_min, t_max) {
             return None;
         }
 
@@ -120,14 +129,14 @@ impl BVH {
         let mut closest_t = t_max;
 
         if let Some(left) = &node.left {
-            if let Some(rec) = self.hit_node(left, ray, t_min, closest_t) {
+            if let Some(rec) = self.hit_node(left, ray, inv_dir, t_min, closest_t) {
                 closest_t = rec.t;
                 closest = Some(rec);
             }
         }
 
         if let Some(right) = &node.right {
-            if let Some(rec) = self.hit_node(right, ray, t_min, closest_t) {
+            if let Some(rec) = self.hit_node(right, ray, inv_dir, t_min, closest_t) {
                 closest = Some(rec);
             }
         }
