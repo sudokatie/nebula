@@ -62,4 +62,41 @@ impl Camera {
             self.lower_left_corner + self.horizontal * s + self.vertical * t - self.origin - offset,
         )
     }
+
+    // Accessors for GPU rendering
+    
+    /// Get camera origin
+    pub fn origin(&self) -> Vec3 {
+        self.origin
+    }
+
+    /// Get lower left corner of viewport
+    pub fn lower_left_corner(&self) -> Vec3 {
+        self.lower_left_corner
+    }
+
+    /// Get horizontal extent of viewport
+    pub fn horizontal(&self) -> Vec3 {
+        self.horizontal
+    }
+
+    /// Get vertical extent of viewport
+    pub fn vertical(&self) -> Vec3 {
+        self.vertical
+    }
+
+    /// Get camera U basis vector
+    pub fn u(&self) -> Vec3 {
+        self.u
+    }
+
+    /// Get camera V basis vector
+    pub fn v(&self) -> Vec3 {
+        self.v
+    }
+
+    /// Get lens radius for DOF
+    pub fn lens_radius(&self) -> f32 {
+        self.lens_radius
+    }
 }

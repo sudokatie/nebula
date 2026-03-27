@@ -1,4 +1,15 @@
-// Path tracing compute shader
+// Path tracing compute shader with scene data support
+
+// GPU limits
+const MAX_SPHERES: u32 = 1024u;
+const MAX_TRIANGLES: u32 = 65536u;
+const MAX_MATERIALS: u32 = 256u;
+
+// Material types
+const MAT_LAMBERTIAN: u32 = 0u;
+const MAT_METAL: u32 = 1u;
+const MAT_DIELECTRIC: u32 = 2u;
+const MAT_EMISSIVE: u32 = 3u;
 
 struct Uniforms {
     width: u32,
@@ -12,7 +23,34 @@ struct Uniforms {
     camera_u: vec4<f32>,
     camera_v: vec4<f32>,
     lens_radius: f32,
-    _padding: vec3<f32>,
+    sample_offset: u32,
+    sphere_count: u32,
+    triangle_count: u32,
+}
+
+struct Sphere {
+    center: vec3<f32>,
+    radius: f32,
+    material_id: u32,
+    _padding: vec3<u32>,
+}
+
+struct Triangle {
+    v0: vec3<f32>,
+    _pad0: f32,
+    v1: vec3<f32>,
+    _pad1: f32,
+    v2: vec3<f32>,
+    material_id: u32,
+}
+
+struct Material {
+    albedo: vec3<f32>,
+    material_type: u32,
+    roughness: f32,
+    ior: f32,
+    emission_strength: f32,
+    _padding: f32,
 }
 
 @group(0) @binding(0)
@@ -20,6 +58,15 @@ var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
 var<storage, read_write> output: array<vec4<f32>>;
+
+@group(0) @binding(2)
+var<storage, read> spheres: array<Sphere>;
+
+@group(0) @binding(3)
+var<storage, read> triangles: array<Triangle>;
+
+@group(0) @binding(4)
+var<storage, read> materials: array<Material>;
 
 // PCG random number generator
 fn pcg_hash(input: u32) -> u32 {
@@ -50,6 +97,15 @@ fn rand_unit_vector(seed: ptr<function, u32>) -> vec3<f32> {
     return normalize(rand_in_unit_sphere(seed));
 }
 
+fn rand_in_unit_disk(seed: ptr<function, u32>) -> vec2<f32> {
+    loop {
+        let p = vec2<f32>(rand(seed) * 2.0 - 1.0, rand(seed) * 2.0 - 1.0);
+        if dot(p, p) < 1.0 {
+            return p;
+        }
+    }
+}
+
 struct Ray {
     origin: vec3<f32>,
     direction: vec3<f32>,
@@ -60,7 +116,10 @@ fn ray_at(ray: Ray, t: f32) -> vec3<f32> {
 }
 
 fn get_camera_ray(u: f32, v: f32, seed: ptr<function, u32>) -> Ray {
-    let origin = uniforms.camera_origin.xyz;
+    let rd = rand_in_unit_disk(seed) * uniforms.lens_radius;
+    let offset = uniforms.camera_u.xyz * rd.x + uniforms.camera_v.xyz * rd.y;
+    
+    let origin = uniforms.camera_origin.xyz + offset;
     let direction = uniforms.camera_lower_left.xyz 
         + uniforms.camera_horizontal.xyz * u 
         + uniforms.camera_vertical.xyz * v 
@@ -68,7 +127,6 @@ fn get_camera_ray(u: f32, v: f32, seed: ptr<function, u32>) -> Ray {
     return Ray(origin, normalize(direction));
 }
 
-// Simple sphere intersection
 struct HitRecord {
     t: f32,
     point: vec3<f32>,
@@ -77,11 +135,13 @@ struct HitRecord {
     material_id: u32,
 }
 
-fn hit_sphere(center: vec3<f32>, radius: f32, ray: Ray, t_min: f32, t_max: f32) -> HitRecord {
-    let oc = ray.origin - center;
+// Sphere intersection
+fn hit_sphere(sphere_idx: u32, ray: Ray, t_min: f32, t_max: f32) -> HitRecord {
+    let sphere = spheres[sphere_idx];
+    let oc = ray.origin - sphere.center;
     let a = dot(ray.direction, ray.direction);
     let half_b = dot(oc, ray.direction);
-    let c = dot(oc, oc) - radius * radius;
+    let c = dot(oc, oc) - sphere.radius * sphere.radius;
     let discriminant = half_b * half_b - a * c;
     
     var rec: HitRecord;
@@ -103,55 +163,108 @@ fn hit_sphere(center: vec3<f32>, radius: f32, ray: Ray, t_min: f32, t_max: f32) 
     
     rec.t = root;
     rec.point = ray_at(ray, root);
-    let outward_normal = (rec.point - center) / radius;
+    let outward_normal = (rec.point - sphere.center) / sphere.radius;
     rec.front_face = dot(ray.direction, outward_normal) < 0.0;
     rec.normal = select(-outward_normal, outward_normal, rec.front_face);
-    rec.material_id = 0u;
+    rec.material_id = sphere.material_id;
     
     return rec;
 }
 
-// Scene: ground sphere + 3 main spheres
+// Triangle intersection (Moller-Trumbore)
+fn hit_triangle(tri_idx: u32, ray: Ray, t_min: f32, t_max: f32) -> HitRecord {
+    let tri = triangles[tri_idx];
+    let edge1 = tri.v1 - tri.v0;
+    let edge2 = tri.v2 - tri.v0;
+    let h = cross(ray.direction, edge2);
+    let a = dot(edge1, h);
+    
+    var rec: HitRecord;
+    rec.t = -1.0;
+    
+    if abs(a) < 1e-8 {
+        return rec;
+    }
+    
+    let f = 1.0 / a;
+    let s = ray.origin - tri.v0;
+    let u = f * dot(s, h);
+    
+    if u < 0.0 || u > 1.0 {
+        return rec;
+    }
+    
+    let q = cross(s, edge1);
+    let v = f * dot(ray.direction, q);
+    
+    if v < 0.0 || u + v > 1.0 {
+        return rec;
+    }
+    
+    let t = f * dot(edge2, q);
+    
+    if t < t_min || t > t_max {
+        return rec;
+    }
+    
+    rec.t = t;
+    rec.point = ray_at(ray, t);
+    let outward_normal = normalize(cross(edge1, edge2));
+    rec.front_face = dot(ray.direction, outward_normal) < 0.0;
+    rec.normal = select(-outward_normal, outward_normal, rec.front_face);
+    rec.material_id = tri.material_id;
+    
+    return rec;
+}
+
+// Scene intersection
 fn hit_scene(ray: Ray, t_min: f32, t_max: f32) -> HitRecord {
     var closest: HitRecord;
     closest.t = -1.0;
     var closest_t = t_max;
     
-    // Ground
-    let ground = hit_sphere(vec3<f32>(0.0, -1000.0, 0.0), 1000.0, ray, t_min, closest_t);
-    if ground.t > 0.0 {
-        closest = ground;
-        closest.material_id = 0u; // gray diffuse
-        closest_t = ground.t;
+    // Test spheres
+    for (var i = 0u; i < uniforms.sphere_count && i < MAX_SPHERES; i++) {
+        let rec = hit_sphere(i, ray, t_min, closest_t);
+        if rec.t > 0.0 {
+            closest = rec;
+            closest_t = rec.t;
+        }
     }
     
-    // Center sphere (glass)
-    let center = hit_sphere(vec3<f32>(0.0, 1.0, 0.0), 1.0, ray, t_min, closest_t);
-    if center.t > 0.0 {
-        closest = center;
-        closest.material_id = 1u; // glass
-        closest_t = center.t;
-    }
-    
-    // Left sphere (diffuse)
-    let left = hit_sphere(vec3<f32>(-4.0, 1.0, 0.0), 1.0, ray, t_min, closest_t);
-    if left.t > 0.0 {
-        closest = left;
-        closest.material_id = 2u; // brown diffuse
-        closest_t = left.t;
-    }
-    
-    // Right sphere (metal)
-    let right = hit_sphere(vec3<f32>(4.0, 1.0, 0.0), 1.0, ray, t_min, closest_t);
-    if right.t > 0.0 {
-        closest = right;
-        closest.material_id = 3u; // metal
-        closest_t = right.t;
+    // Test triangles
+    for (var i = 0u; i < uniforms.triangle_count && i < MAX_TRIANGLES; i++) {
+        let rec = hit_triangle(i, ray, t_min, closest_t);
+        if rec.t > 0.0 {
+            closest = rec;
+            closest_t = rec.t;
+        }
     }
     
     return closest;
 }
 
+// Schlick approximation for Fresnel
+fn schlick(cosine: f32, ior: f32) -> f32 {
+    var r0 = (1.0 - ior) / (1.0 + ior);
+    r0 = r0 * r0;
+    return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+}
+
+// Reflect vector
+fn reflect_vec(v: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    return v - 2.0 * dot(v, n) * n;
+}
+
+// Refract vector
+fn refract_vec(v: vec3<f32>, n: vec3<f32>, eta: f32) -> vec3<f32> {
+    let cos_theta = min(dot(-v, n), 1.0);
+    let r_out_perp = eta * (v + cos_theta * n);
+    let r_out_parallel = -sqrt(abs(1.0 - dot(r_out_perp, r_out_perp))) * n;
+    return r_out_perp + r_out_parallel;
+}
+
+// Trace ray through scene
 fn trace(ray: Ray, seed: ptr<function, u32>) -> vec3<f32> {
     var current_ray = ray;
     var color = vec3<f32>(1.0);
@@ -167,28 +280,55 @@ fn trace(ray: Ray, seed: ptr<function, u32>) -> vec3<f32> {
             return color * sky;
         }
         
-        // Simple diffuse for all materials (simplified)
-        let scatter_dir = hit.normal + rand_unit_vector(seed);
-        current_ray = Ray(hit.point, normalize(scatter_dir));
+        let mat = materials[hit.material_id];
         
-        // Material colors
-        var albedo = vec3<f32>(0.5); // default gray
-        if hit.material_id == 1u {
-            albedo = vec3<f32>(1.0); // glass (simplified to white)
-        } else if hit.material_id == 2u {
-            albedo = vec3<f32>(0.4, 0.2, 0.1); // brown
-        } else if hit.material_id == 3u {
-            albedo = vec3<f32>(0.7, 0.6, 0.5); // metal gold
+        // Handle different material types
+        switch mat.material_type {
+            case MAT_EMISSIVE: {
+                return color * mat.albedo * mat.emission_strength;
+            }
+            case MAT_METAL: {
+                let reflected = reflect_vec(normalize(current_ray.direction), hit.normal);
+                let scattered = reflected + mat.roughness * rand_in_unit_sphere(seed);
+                if dot(scattered, hit.normal) <= 0.0 {
+                    return vec3<f32>(0.0);
+                }
+                current_ray = Ray(hit.point, normalize(scattered));
+                color *= mat.albedo;
+            }
+            case MAT_DIELECTRIC: {
+                let refraction_ratio = select(mat.ior, 1.0 / mat.ior, hit.front_face);
+                let unit_dir = normalize(current_ray.direction);
+                let cos_theta = min(dot(-unit_dir, hit.normal), 1.0);
+                let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+                
+                let cannot_refract = refraction_ratio * sin_theta > 1.0;
+                let should_reflect = schlick(cos_theta, refraction_ratio) > rand(seed);
+                
+                var direction: vec3<f32>;
+                if cannot_refract || should_reflect {
+                    direction = reflect_vec(unit_dir, hit.normal);
+                } else {
+                    direction = refract_vec(unit_dir, hit.normal, refraction_ratio);
+                }
+                current_ray = Ray(hit.point, direction);
+                // Glass doesn't absorb light
+            }
+            default: { // MAT_LAMBERTIAN
+                let scatter_dir = hit.normal + rand_unit_vector(seed);
+                current_ray = Ray(hit.point, normalize(scatter_dir));
+                color *= mat.albedo;
+            }
         }
-        
-        color *= albedo;
         
         // Russian roulette
         let p = max(color.x, max(color.y, color.z));
-        if rand(seed) > p {
+        if depth > 3u && rand(seed) > p {
             return vec3<f32>(0.0);
         }
-        color /= p;
+        if depth > 3u {
+            color /= p;
+        }
     }
     
     return vec3<f32>(0.0);
@@ -204,7 +344,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     let pixel_idx = y * uniforms.width + x;
-    var seed = pixel_idx * 1973u + 9277u;
+    var seed = pixel_idx * 1973u + uniforms.sample_offset * 9277u;
     
     var color = vec3<f32>(0.0);
     
@@ -217,6 +357,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     color /= f32(uniforms.samples);
+    
+    // Accumulate for progressive rendering
+    let prev = output[pixel_idx].xyz;
+    let weight = f32(uniforms.sample_offset) / f32(uniforms.sample_offset + 1u);
+    color = mix(color, prev, weight);
     
     // Gamma correction
     color = sqrt(color);

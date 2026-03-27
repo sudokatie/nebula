@@ -364,21 +364,26 @@ impl GpuRenderer {
         pixels
     }
 
-    fn create_uniforms(&self, _camera: &Camera, sample_offset: u32) -> Uniforms {
-        // TODO: Extract camera data properly
-        // For now, use placeholder values
+    fn create_uniforms(&self, camera: &Camera, sample_offset: u32) -> Uniforms {
+        let origin = camera.origin();
+        let llc = camera.lower_left_corner();
+        let horiz = camera.horizontal();
+        let vert = camera.vertical();
+        let u = camera.u();
+        let v = camera.v();
+        
         Uniforms {
             width: self.config.width,
             height: self.config.height,
             samples: 1, // One sample per call for progressive
             max_depth: self.config.max_depth,
-            camera_origin: [0.0, 0.0, 3.0, 0.0],
-            camera_lower_left: [-2.0, -1.5, -1.0, 0.0],
-            camera_horizontal: [4.0, 0.0, 0.0, 0.0],
-            camera_vertical: [0.0, 3.0, 0.0, 0.0],
-            camera_u: [1.0, 0.0, 0.0, 0.0],
-            camera_v: [0.0, 1.0, 0.0, 0.0],
-            lens_radius: 0.0,
+            camera_origin: [origin.x, origin.y, origin.z, 0.0],
+            camera_lower_left: [llc.x, llc.y, llc.z, 0.0],
+            camera_horizontal: [horiz.x, horiz.y, horiz.z, 0.0],
+            camera_vertical: [vert.x, vert.y, vert.z, 0.0],
+            camera_u: [u.x, u.y, u.z, 0.0],
+            camera_v: [v.x, v.y, v.z, 0.0],
+            lens_radius: camera.lens_radius(),
             sample_offset,
             _padding: [0.0; 2],
         }

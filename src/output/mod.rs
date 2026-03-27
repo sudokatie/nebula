@@ -159,6 +159,91 @@ pub fn tonemap_aces(color: Vec3) -> Vec3 {
     )
 }
 
+/// Save image as HDR (Radiance RGBE format)
+pub fn save_hdr(path: &Path, pixels: &[Vec3], width: u32, height: u32) -> io::Result<()> {
+    use std::io::BufWriter;
+    
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    
+    // HDR header
+    writeln!(writer, "#?RADIANCE")?;
+    writeln!(writer, "FORMAT=32-bit_rle_rgbe")?;
+    writeln!(writer)?;
+    writeln!(writer, "-Y {} +X {}", height, width)?;
+    
+    // Write pixels in RGBE format
+    for pixel in pixels {
+        let rgbe = rgb_to_rgbe(pixel.x, pixel.y, pixel.z);
+        writer.write_all(&rgbe)?;
+    }
+    
+    Ok(())
+}
+
+/// Convert RGB to RGBE (Radiance format)
+fn rgb_to_rgbe(r: f32, g: f32, b: f32) -> [u8; 4] {
+    let max_val = r.max(g).max(b);
+    
+    if max_val < 1e-32 {
+        return [0, 0, 0, 0];
+    }
+    
+    let (mantissa, exponent) = frexp(max_val);
+    let scale = mantissa * 256.0 / max_val;
+    
+    [
+        (r * scale) as u8,
+        (g * scale) as u8,
+        (b * scale) as u8,
+        (exponent + 128) as u8,
+    ]
+}
+
+/// Extract mantissa and exponent (frexp equivalent)
+fn frexp(x: f32) -> (f32, i32) {
+    if x == 0.0 {
+        return (0.0, 0);
+    }
+    let bits = x.to_bits();
+    let exponent = ((bits >> 23) & 0xff) as i32 - 126;
+    let mantissa = f32::from_bits((bits & 0x807fffff) | 0x3f000000);
+    (mantissa, exponent)
+}
+
+/// Save image as EXR (OpenEXR format - simplified single-part scanline)
+pub fn save_exr(path: &Path, pixels: &[Vec3], width: u32, height: u32) -> io::Result<()> {
+    // Note: This is a simplified EXR writer. For production use, consider the `exr` crate.
+    use std::io::BufWriter;
+    
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    
+    // EXR magic number
+    writer.write_all(&[0x76, 0x2f, 0x31, 0x01])?;
+    
+    // Version (2.0, single-part scanline)
+    writer.write_all(&[2, 0, 0, 0])?;
+    
+    // Headers (simplified - channels, compression, dataWindow, displayWindow, lineOrder, pixelAspectRatio, screenWindowCenter, screenWindowWidth)
+    // For a proper implementation, use the exr crate
+    
+    // For now, write raw float data with minimal header
+    // This is a placeholder - proper EXR requires more complex header structure
+    
+    // Write pixel data as raw floats (not standard EXR but readable)
+    for pixel in pixels {
+        writer.write_all(&pixel.x.to_le_bytes())?;
+        writer.write_all(&pixel.y.to_le_bytes())?;
+        writer.write_all(&pixel.z.to_le_bytes())?;
+    }
+    
+    // Note: For proper EXR support, add the `exr` crate dependency
+    eprintln!("Warning: EXR output is simplified. For full EXR support, use the `exr` crate.");
+    
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
