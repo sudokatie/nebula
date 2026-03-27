@@ -1,0 +1,149 @@
+{
+  "_description": "Scene demonstrating all nebula features: transforms, textures, instances, UVs",
+  "camera": {
+    "position": [8, 3, 8],
+    "look_at": [0, 0.5, 0],
+    "up": [0, 1, 0],
+    "fov": 50,
+    "aperture": 0.05,
+    "focus_distance": 11
+  },
+  "settings": {
+    "width": 800,
+    "height": 600,
+    "samples": 50,
+    "depth": 30
+  },
+  "materials": [
+    {
+      "name": "checker_floor",
+      "type": "lambertian",
+      "checker": [[0.1, 0.1, 0.1], [0.9, 0.9, 0.9]],
+      "scale": 5
+    },
+    {
+      "name": "noise_marble",
+      "type": "lambertian",
+      "noise": 8.0
+    },
+    {
+      "name": "glass",
+      "type": "dielectric",
+      "ior": 1.5
+    },
+    {
+      "name": "mirror",
+      "type": "metal",
+      "albedo": [0.95, 0.95, 0.95],
+      "roughness": 0.0
+    },
+    {
+      "name": "brushed_gold",
+      "type": "metal",
+      "albedo": [0.9, 0.7, 0.3],
+      "roughness": 0.2
+    },
+    {
+      "name": "matte_red",
+      "type": "lambertian",
+      "albedo": [0.7, 0.15, 0.1]
+    },
+    {
+      "name": "matte_blue",
+      "type": "lambertian",
+      "albedo": [0.15, 0.2, 0.7]
+    },
+    {
+      "name": "soft_light",
+      "type": "emissive",
+      "color": [1, 0.98, 0.95],
+      "strength": 8
+    }
+  ],
+  "objects": [
+    {
+      "_comment": "Ground plane",
+      "type": "sphere",
+      "center": [0, -1000, 0],
+      "radius": 1000,
+      "material": "checker_floor"
+    },
+    {
+      "_comment": "Main glass sphere",
+      "type": "sphere",
+      "center": [0, 1, 0],
+      "radius": 1.0,
+      "material": "glass"
+    },
+    {
+      "_comment": "Transformed metallic ellipsoid",
+      "type": "sphere",
+      "center": [0, 0, 0],
+      "radius": 0.5,
+      "material": "brushed_gold",
+      "transform": {
+        "scale": [1.0, 2.0, 1.0],
+        "translate": [-2.5, 1.0, 0]
+      }
+    },
+    {
+      "_comment": "Rotated and scaled sphere",
+      "type": "sphere",
+      "center": [0, 0, 0],
+      "radius": 0.6,
+      "material": "noise_marble",
+      "transform": {
+        "translate": [2.5, 0.6, 0],
+        "rotate_y": 45
+      }
+    },
+    {
+      "_comment": "Small red sphere",
+      "type": "sphere",
+      "center": [-1, 0.4, 2],
+      "radius": 0.4,
+      "material": "matte_red"
+    },
+    {
+      "_comment": "Small blue sphere",
+      "type": "sphere",
+      "center": [1, 0.4, 2],
+      "radius": 0.4,
+      "material": "matte_blue"
+    },
+    {
+      "_comment": "Mirror sphere behind",
+      "type": "sphere",
+      "center": [0, 0.8, -2.5],
+      "radius": 0.8,
+      "material": "mirror"
+    },
+    {
+      "_comment": "Area light quad",
+      "type": "quad",
+      "quad_vertices": [[-2, 4, -2], [2, 4, -2], [2, 4, 2], [-2, 4, 2]],
+      "material": "soft_light"
+    },
+    {
+      "_comment": "Triangle with explicit UVs",
+      "type": "triangle",
+      "vertices": [[3, 0, 2], [4, 0, 2], [3.5, 1, 2]],
+      "normals": [[0, 0, 1], [0, 0, 1], [0, 0, 1]],
+      "uvs": [[0, 0], [1, 0], [0.5, 1]],
+      "material": "matte_red"
+    },
+    {
+      "_comment": "Instance example - transformed sphere",
+      "type": "instance",
+      "geometry": "sphere",
+      "center": [0, 0, 0],
+      "radius": 0.3,
+      "material": "brushed_gold",
+      "transform": {
+        "translate": [4, 0.3, 0],
+        "rotate_y": 30,
+        "scale": [1, 1.5, 1]
+      }
+    }
+  ]
+}

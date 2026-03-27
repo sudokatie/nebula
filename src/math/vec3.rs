@@ -153,6 +153,45 @@ impl Vec3 {
             self.z.max(other.z),
         )
     }
+
+    /// Create vector with all components equal
+    pub fn splat(v: f32) -> Vec3 {
+        Vec3::new(v, v, v)
+    }
+
+    /// Get maximum component
+    pub fn max_component(&self) -> f32 {
+        self.x.max(self.y).max(self.z)
+    }
+
+    /// Get minimum component
+    pub fn min_component(&self) -> f32 {
+        self.x.min(self.y).min(self.z)
+    }
+
+    /// Clamp components to range
+    pub fn clamp(&self, min: Vec3, max: Vec3) -> Vec3 {
+        Vec3::new(
+            self.x.clamp(min.x, max.x),
+            self.y.clamp(min.y, max.y),
+            self.z.clamp(min.z, max.z),
+        )
+    }
+
+    /// Sum of all components
+    pub fn sum(&self) -> f32 {
+        self.x + self.y + self.z
+    }
+
+    /// Average of components
+    pub fn avg(&self) -> f32 {
+        self.sum() / 3.0
+    }
+
+    /// Luminance (perceptual brightness)
+    pub fn luminance(&self) -> f32 {
+        0.2126 * self.x + 0.7152 * self.y + 0.0722 * self.z
+    }
 }
 
 // Operator implementations

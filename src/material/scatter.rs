@@ -1,22 +1,32 @@
-//! Material trait and scatter record
+//! Scatter record for material sampling
 
 use crate::math::{Vec3, Ray};
-use crate::geometry::HitRecord;
-use rand_xoshiro::Xoshiro256PlusPlus;
 
-/// Record of scattered ray
+/// Result of scattering a ray
+#[derive(Clone)]
 pub struct ScatterRecord {
+    /// Color attenuation
     pub attenuation: Vec3,
+    /// Scattered ray
     pub scattered: Ray,
+    /// PDF of the sampled direction
+    pub pdf: f32,
 }
 
-/// Trait for materials (uses concrete RNG for dyn compatibility)
-pub trait Material: Send + Sync {
-    /// Scatter incoming ray at hit point
-    fn scatter(&self, ray: &Ray, hit: &HitRecord, rng: &mut Xoshiro256PlusPlus) -> Option<ScatterRecord>;
-    
-    /// Emitted light (default: none)
-    fn emit(&self) -> Vec3 {
-        Vec3::zero()
+impl ScatterRecord {
+    pub fn new(attenuation: Vec3, scattered: Ray) -> Self {
+        Self {
+            attenuation,
+            scattered,
+            pdf: 1.0,
+        }
+    }
+
+    pub fn with_pdf(attenuation: Vec3, scattered: Ray, pdf: f32) -> Self {
+        Self {
+            attenuation,
+            scattered,
+            pdf,
+        }
     }
 }

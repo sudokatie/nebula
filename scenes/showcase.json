@@ -1,35 +1,135 @@
 {
   "camera": {
-    "position": [5, 3, 8],
-    "look_at": [0, 0.5, 0],
+    "position": [10, 4, 8],
+    "look_at": [0, 1, 0],
     "up": [0, 1, 0],
-    "fov": 35,
-    "aperture": 0.05,
-    "focus_distance": 8
+    "fov": 45,
+    "aperture": 0.1,
+    "focus_distance": 12
   },
   "settings": {
     "width": 800,
     "height": 600,
-    "samples": 200,
+    "samples": 100,
     "depth": 50
   },
   "materials": [
-    {"name": "floor", "type": "lambertian", "albedo": [0.8, 0.8, 0.8]},
-    {"name": "red_matte", "type": "lambertian", "albedo": [0.8, 0.2, 0.2]},
-    {"name": "blue_matte", "type": "lambertian", "albedo": [0.2, 0.2, 0.8]},
-    {"name": "gold", "type": "metal", "albedo": [0.8, 0.6, 0.2], "roughness": 0.1},
-    {"name": "silver", "type": "metal", "albedo": [0.9, 0.9, 0.9], "roughness": 0.0},
-    {"name": "glass", "type": "dielectric", "ior": 1.5},
-    {"name": "light", "type": "emissive", "color": [1, 0.9, 0.8], "strength": 10}
+    {
+      "name": "ground_checker",
+      "type": "lambertian",
+      "checker": [[0.2, 0.3, 0.1], [0.9, 0.9, 0.9]],
+      "scale": 10
+    },
+    {
+      "name": "noise_ball",
+      "type": "lambertian",
+      "noise": 4.0
+    },
+    {
+      "name": "glass",
+      "type": "dielectric",
+      "ior": 1.5
+    },
+    {
+      "name": "gold",
+      "type": "metal",
+      "albedo": [0.8, 0.6, 0.2],
+      "roughness": 0.1
+    },
+    {
+      "name": "rough_silver",
+      "type": "metal",
+      "albedo": [0.7, 0.7, 0.8],
+      "roughness": 0.4
+    },
+    {
+      "name": "red_diffuse",
+      "type": "lambertian",
+      "albedo": [0.8, 0.2, 0.1]
+    },
+    {
+      "name": "blue_diffuse",
+      "type": "lambertian",
+      "albedo": [0.1, 0.2, 0.8]
+    },
+    {
+      "name": "area_light",
+      "type": "emissive",
+      "color": [1, 0.95, 0.9],
+      "strength": 10
+    }
   ],
   "objects": [
-    {"type": "sphere", "center": [0, -100, 0], "radius": 100, "material": "floor"},
-    {"type": "sphere", "center": [-2, 0.5, 0], "radius": 0.5, "material": "red_matte"},
-    {"type": "sphere", "center": [0, 0.5, 0], "radius": 0.5, "material": "glass"},
-    {"type": "sphere", "center": [2, 0.5, 0], "radius": 0.5, "material": "blue_matte"},
-    {"type": "sphere", "center": [-1, 1.2, -1], "radius": 0.4, "material": "gold"},
-    {"type": "sphere", "center": [1, 1.2, -1], "radius": 0.4, "material": "silver"},
-    {"type": "sphere", "center": [0, 0.3, 1.5], "radius": 0.3, "material": "glass"},
-    {"type": "sphere", "center": [3, 5, 2], "radius": 1, "material": "light"}
+    {
+      "type": "sphere",
+      "center": [0, -1000, 0],
+      "radius": 1000,
+      "material": "ground_checker"
+    },
+    {
+      "type": "sphere",
+      "center": [0, 1, 0],
+      "radius": 1.0,
+      "material": "glass"
+    },
+    {
+      "type": "sphere",
+      "center": [-2.5, 0.8, 1],
+      "radius": 0.8,
+      "material": "gold"
+    },
+    {
+      "type": "sphere",
+      "center": [2.5, 0.8, 1],
+      "radius": 0.8,
+      "material": "noise_ball"
+    },
+    {
+      "type": "sphere",
+      "center": [-1.5, 0.5, 3],
+      "radius": 0.5,
+      "material": "red_diffuse"
+    },
+    {
+      "type": "sphere",
+      "center": [1.5, 0.5, 3],
+      "radius": 0.5,
+      "material": "blue_diffuse"
+    },
+    {
+      "type": "sphere",
+      "center": [0, 0.4, 2.5],
+      "radius": 0.4,
+      "material": "rough_silver"
+    },
+    {
+      "type": "sphere",
+      "center": [0, 1, 0],
+      "radius": -0.9,
+      "material": "glass",
+      "_comment": "Hollow glass sphere (negative radius)"
+    },
+    {
+      "type": "quad",
+      "quad_vertices": [[-3, 4, -2], [3, 4, -2], [3, 4, 2], [-3, 4, 2]],
+      "material": "area_light"
+    },
+    {
+      "type": "sphere",
+      "center": [0, 0.6, -2],
+      "radius": 0.6,
+      "material": "gold",
+      "transform": {
+        "scale": [1.5, 1, 1],
+        "rotate_y": 30
+      }
+    },
+    {
+      "type": "triangle",
+      "vertices": [[-4, 0, -3], [-3.5, 0, -2], [-4.5, 0, -2]],
+      "normals": [[0, 1, 0], [0, 1, 0], [0, 1, 0]],
+      "uvs": [[0.5, 1], [1, 0], [0, 0]],
+      "material": "red_diffuse"
+    }
   ]
 }

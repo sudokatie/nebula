@@ -3,6 +3,17 @@
 use crate::math::{Vec3, Ray};
 use rand::Rng;
 
+/// Camera uniform data for GPU
+pub struct CameraUniforms {
+    pub origin: [f32; 4],
+    pub lower_left: [f32; 4],
+    pub horizontal: [f32; 4],
+    pub vertical: [f32; 4],
+    pub u: [f32; 4],
+    pub v: [f32; 4],
+    pub lens_radius: f32,
+}
+
 /// Thin lens camera with depth of field
 pub struct Camera {
     origin: Vec3,
@@ -61,5 +72,63 @@ impl Camera {
             self.origin + offset,
             self.lower_left_corner + self.horizontal * s + self.vertical * t - self.origin - offset,
         )
+    }
+
+    /// Get camera uniforms for GPU rendering
+    pub fn get_uniforms(&self) -> CameraUniforms {
+        CameraUniforms {
+            origin: [self.origin.x, self.origin.y, self.origin.z, 0.0],
+            lower_left: [
+                self.lower_left_corner.x,
+                self.lower_left_corner.y,
+                self.lower_left_corner.z,
+                0.0,
+            ],
+            horizontal: [self.horizontal.x, self.horizontal.y, self.horizontal.z, 0.0],
+            vertical: [self.vertical.x, self.vertical.y, self.vertical.z, 0.0],
+            u: [self.u.x, self.u.y, self.u.z, 0.0],
+            v: [self.v.x, self.v.y, self.v.z, 0.0],
+            lens_radius: self.lens_radius,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_camera_new() {
+        let camera = Camera::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            60.0,
+            1.0,
+            0.0,
+            1.0,
+        );
+        
+        let mut rng = rand::thread_rng();
+        let ray = camera.get_ray(0.5, 0.5, &mut rng);
+        assert!((ray.origin - Vec3::zero()).length() < 0.01);
+    }
+
+    #[test]
+    fn test_camera_uniforms() {
+        let camera = Camera::new(
+            Vec3::new(0.0, 1.0, 3.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            60.0,
+            1.5,
+            0.1,
+            3.0,
+        );
+        
+        let uniforms = camera.get_uniforms();
+        assert_eq!(uniforms.origin[0], 0.0);
+        assert_eq!(uniforms.origin[1], 1.0);
+        assert_eq!(uniforms.origin[2], 3.0);
     }
 }

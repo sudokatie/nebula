@@ -7,9 +7,6 @@ license = "MIT"
 repository = "https://github.com/sudokatie/nebula"
 
 [dependencies]
-# Math (using our own Vec3 for learning, but glam for matrices)
-glam = "0.29"
-
 # Random number generation
 rand = "0.8"
 rand_xoshiro = "0.6"
@@ -27,14 +24,21 @@ clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Signal handling for preview
+ctrlc = "3.4"
+
 # GPU compute (optional)
 wgpu = { version = "23.0", optional = true }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.14", features = ["derive"], optional = true }
 
+# EXR output (enabled by default)
+exr = "1.7"
+
 [features]
-default = []
+default = ["openexr"]
 gpu = ["wgpu", "pollster", "bytemuck"]
+openexr = []
 
 [dev-dependencies]
 criterion = "0.5"
@@ -46,3 +50,6 @@ harness = false
 [profile.release]
 lto = true
 codegen-units = 1
+
+[profile.bench]
+inherits = "release"

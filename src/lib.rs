@@ -1,25 +1,48 @@
 //! Nebula - A physically-based path tracer
 //!
-//! Renders 3D scenes using unbiased Monte Carlo path tracing.
-//! Supports CPU rendering with SIMD acceleration and optional GPU compute.
+//! # Example
+//! ```ignore
+//! use nebula::prelude::*;
+//!
+//! let mut scene = Scene::new();
+//! let mat = scene.add_material(Box::new(Lambertian::new(Vec3::new(0.5, 0.5, 0.5))));
+//! scene.add_sphere(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, mat));
+//! scene.build_bvh();
+//!
+//! let camera = Camera::new(
+//!     Vec3::new(0.0, 0.0, 0.0),
+//!     Vec3::new(0.0, 0.0, -1.0),
+//!     Vec3::new(0.0, 1.0, 0.0),
+//!     60.0, 1.0, 0.0, 1.0
+//! );
+//!
+//! let renderer = CpuRenderer::new(800, 600, 100, 50);
+//! let pixels = renderer.render(&scene, &camera);
+//! ```
 
-pub mod math;
-pub mod geometry;
 pub mod accel;
-pub mod material;
 pub mod camera;
-pub mod sampler;
+pub mod geometry;
 pub mod integrator;
-pub mod scene;
-pub mod render;
+pub mod material;
+pub mod math;
 pub mod output;
+pub mod render;
+pub mod sampler;
+pub mod scene;
 
-// Re-exports for convenience
-pub use math::{Vec3, Ray};
-pub use geometry::{HitRecord, Hittable, Sphere, Triangle};
-pub use accel::{AABB, BVH};
-pub use material::{Material, Lambertian, Metal, Dielectric, Emissive};
-pub use camera::Camera;
-pub use integrator::PathIntegrator;
-pub use scene::Scene;
-pub use render::CpuRenderer;
+/// Prelude - commonly used types
+pub mod prelude {
+    pub use crate::math::{Vec3, Vec3x4, Ray, RayDifferential, Transform};
+    pub use crate::geometry::{Sphere, Triangle, Mesh, Instance, HitRecord, Hittable};
+    pub use crate::material::{
+        Material, MaterialExt, Lambertian, Metal, Dielectric, Emissive,
+        Texture, SolidColor, Checker, ScatterRecord,
+    };
+    pub use crate::camera::Camera;
+    pub use crate::scene::Scene;
+    pub use crate::accel::{AABB, BVH, RayPacket, HitPacket};
+    pub use crate::render::{CpuRenderer, GpuRenderer, GpuConfig};
+    pub use crate::integrator::PathIntegrator;
+    pub use crate::output::{ToneMap, save_png, save_ppm, save_hdr, save_exr};
+}

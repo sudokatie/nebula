@@ -1,11 +1,7 @@
 //! Rendering backends
 
-mod cpu;
+pub mod cpu;
+pub mod gpu;
 
 pub use cpu::CpuRenderer;
-
-#[cfg(feature = "gpu")]
-mod gpu;
-
-#[cfg(feature = "gpu")]
 pub use gpu::{GpuRenderer, GpuConfig};

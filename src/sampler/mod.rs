@@ -1,5 +1,7 @@
-//! Sampling utilities
+//! Sampling and random number generation
 
-mod rng;
+pub mod rng;
+pub mod sampling;
 
-pub use rng::Sampler;
+pub use rng::*;
+pub use sampling::*;

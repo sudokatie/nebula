@@ -59,12 +59,14 @@ impl Hittable for Sphere {
         let mut rec = HitRecord {
             t: root,
             point,
+            geometric_normal: Vec3::zero(),
             normal: Vec3::zero(),
             uv,
             front_face: false,
             material_id: self.material_id,
         };
-        rec.set_face_normal(ray, outward_normal);
+        // For spheres, geometric and shading normals are the same
+        rec.set_normals(ray, outward_normal, outward_normal);
         
         Some(rec)
     }

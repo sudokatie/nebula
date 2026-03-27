@@ -20,13 +20,25 @@
     {"name": "light", "type": "emissive", "color": [1, 1, 1], "strength": 15}
   ],
   "objects": [
-    {"type": "sphere", "center": [556, 277.5, 277.5], "radius": 277.5, "material": "green"},
-    {"type": "sphere", "center": [0, 277.5, 277.5], "radius": 277.5, "material": "red"},
-    {"type": "sphere", "center": [278, 0, 277.5], "radius": 277.5, "material": "white"},
-    {"type": "sphere", "center": [278, 555, 277.5], "radius": 277.5, "material": "white"},
-    {"type": "sphere", "center": [278, 277.5, 555], "radius": 277.5, "material": "white"},
+    {"type": "triangle", "vertices": [[555, 0, 0], [555, 555, 0], [555, 555, 555]], "material": "green"},
+    {"type": "triangle", "vertices": [[555, 0, 0], [555, 555, 555], [555, 0, 555]], "material": "green"},
+    
+    {"type": "triangle", "vertices": [[0, 0, 0], [0, 555, 555], [0, 555, 0]], "material": "red"},
+    {"type": "triangle", "vertices": [[0, 0, 0], [0, 0, 555], [0, 555, 555]], "material": "red"},
+    
+    {"type": "triangle", "vertices": [[0, 0, 0], [555, 0, 0], [555, 0, 555]], "material": "white"},
+    {"type": "triangle", "vertices": [[0, 0, 0], [555, 0, 555], [0, 0, 555]], "material": "white"},
+    
+    {"type": "triangle", "vertices": [[0, 555, 0], [555, 555, 555], [555, 555, 0]], "material": "white"},
+    {"type": "triangle", "vertices": [[0, 555, 0], [0, 555, 555], [555, 555, 555]], "material": "white"},
+    
+    {"type": "triangle", "vertices": [[0, 0, 555], [555, 0, 555], [555, 555, 555]], "material": "white"},
+    {"type": "triangle", "vertices": [[0, 0, 555], [555, 555, 555], [0, 555, 555]], "material": "white"},
+    
+    {"type": "triangle", "vertices": [[213, 554, 227], [343, 554, 227], [343, 554, 332]], "material": "light"},
+    {"type": "triangle", "vertices": [[213, 554, 227], [343, 554, 332], [213, 554, 332]], "material": "light"},
+    
     {"type": "sphere", "center": [185, 82.5, 168], "radius": 82.5, "material": "white"},
-    {"type": "sphere", "center": [368, 165, 351], "radius": 165, "material": "white"},
-    {"type": "sphere", "center": [278, 554, 279.5], "radius": 60, "material": "light"}
+    {"type": "sphere", "center": [368, 165, 351], "radius": 165, "material": "white"}
   ]
 }
