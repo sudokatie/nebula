@@ -29,13 +29,8 @@ pub struct SceneValidation {
 }
 
 impl SceneValidation {
-    pub fn validate(scene: &Scene) -> Self {
+    pub fn validate(sphere_count: usize, triangle_count: usize, material_count: usize) -> Self {
         let mut errors = Vec::new();
-        
-        // Note: These are placeholder counts - proper implementation would track in Scene
-        let sphere_count = 0; // scene.sphere_count()
-        let triangle_count = 0; // scene.triangle_count()
-        let material_count = 0; // scene.material_count()
 
         if sphere_count > MAX_SPHERES {
             errors.push(format!("Too many spheres: {} > {}", sphere_count, MAX_SPHERES));
@@ -47,8 +42,6 @@ impl SceneValidation {
             errors.push(format!("Too many materials: {} > {}", material_count, MAX_MATERIALS));
         }
 
-        let _ = scene; // Mark as used
-
         Self {
             sphere_count,
             triangle_count,
@@ -59,6 +52,40 @@ impl SceneValidation {
     }
 }
 
+/// GPU sphere data (matches shader struct)
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuSphere {
+    pub center: [f32; 3],
+    pub radius: f32,
+    pub material_id: u32,
+    pub _padding: [u32; 3],
+}
+
+/// GPU triangle data (matches shader struct)
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuTriangle {
+    pub v0: [f32; 3],
+    pub _pad0: f32,
+    pub v1: [f32; 3],
+    pub _pad1: f32,
+    pub v2: [f32; 3],
+    pub material_id: u32,
+}
+
+/// GPU material data (matches shader struct)
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuMaterial {
+    pub albedo: [f32; 3],
+    pub material_type: u32,
+    pub roughness: f32,
+    pub ior: f32,
+    pub emission_strength: f32,
+    pub _padding: f32,
+}
+
 /// GPU-based path tracer with progressive accumulation
 pub struct GpuRenderer {
     device: wgpu::Device,
@@ -67,10 +94,15 @@ pub struct GpuRenderer {
     output_buffer: wgpu::Buffer,
     staging_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
-    accumulator_buffer: wgpu::Buffer,
+    sphere_buffer: wgpu::Buffer,
+    triangle_buffer: wgpu::Buffer,
+    material_buffer: wgpu::Buffer,
+    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     config: GpuConfig,
     sample_count: u32,
+    sphere_count: u32,
+    triangle_count: u32,
 }
 
 /// Uniform data passed to shader
@@ -89,8 +121,9 @@ struct Uniforms {
     camera_u: [f32; 4],
     camera_v: [f32; 4],
     lens_radius: f32,
-    sample_offset: u32, // For progressive rendering
-    _padding: [f32; 2],
+    sample_offset: u32,
+    sphere_count: u32,
+    triangle_count: u32,
 }
 
 impl GpuRenderer {
@@ -142,14 +175,6 @@ impl GpuRenderer {
             mapped_at_creation: false,
         });
 
-        // Create accumulator buffer for progressive rendering
-        let accumulator_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Accumulator Buffer"),
-            size: output_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         // Create staging buffer for readback
         let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
@@ -166,11 +191,33 @@ impl GpuRenderer {
             mapped_at_creation: false,
         });
 
-        // Create bind group layout
+        // Create scene data buffers
+        let sphere_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Sphere Buffer"),
+            size: (MAX_SPHERES * std::mem::size_of::<GpuSphere>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let triangle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Triangle Buffer"),
+            size: (MAX_TRIANGLES * std::mem::size_of::<GpuTriangle>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let material_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Material Buffer"),
+            size: (MAX_MATERIALS * std::mem::size_of::<GpuMaterial>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create bind group layout with all 5 bindings
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Bind Group Layout"),
             entries: &[
-                // Uniforms
+                // Uniforms (binding 0)
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -181,12 +228,45 @@ impl GpuRenderer {
                     },
                     count: None,
                 },
-                // Output
+                // Output (binding 1)
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Spheres (binding 2)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Triangles (binding 3)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Materials (binding 4)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -207,6 +287,18 @@ impl GpuRenderer {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: output_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: sphere_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: triangle_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: material_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -235,24 +327,51 @@ impl GpuRenderer {
             output_buffer,
             staging_buffer,
             uniform_buffer,
-            accumulator_buffer,
+            sphere_buffer,
+            triangle_buffer,
+            material_buffer,
+            bind_group_layout,
             bind_group,
             config,
             sample_count: 0,
+            sphere_count: 0,
+            triangle_count: 0,
         })
     }
 
-    /// Validate scene against GPU limits
-    pub fn validate_scene(&self, scene: &Scene) -> SceneValidation {
-        SceneValidation::validate(scene)
+    /// Upload scene data to GPU
+    pub fn upload_scene(&mut self, spheres: &[GpuSphere], triangles: &[GpuTriangle], materials: &[GpuMaterial]) {
+        // Validate counts
+        let validation = SceneValidation::validate(spheres.len(), triangles.len(), materials.len());
+        if !validation.valid {
+            for error in &validation.errors {
+                eprintln!("GPU scene error: {}", error);
+            }
+            return;
+        }
+
+        self.sphere_count = spheres.len() as u32;
+        self.triangle_count = triangles.len() as u32;
+
+        // Upload sphere data
+        if !spheres.is_empty() {
+            self.queue.write_buffer(&self.sphere_buffer, 0, bytemuck::cast_slice(spheres));
+        }
+
+        // Upload triangle data
+        if !triangles.is_empty() {
+            self.queue.write_buffer(&self.triangle_buffer, 0, bytemuck::cast_slice(triangles));
+        }
+
+        // Upload material data
+        if !materials.is_empty() {
+            self.queue.write_buffer(&self.material_buffer, 0, bytemuck::cast_slice(materials));
+        }
     }
 
     /// Reset accumulator for new render
     pub fn reset(&mut self) {
         self.sample_count = 0;
-        // Clear accumulator buffer
-        let zeros = vec![0u8; (self.config.width * self.config.height * 4 * 4) as usize];
-        self.queue.write_buffer(&self.accumulator_buffer, 0, &zeros);
     }
 
     /// Render one sample (for progressive rendering)
@@ -301,22 +420,6 @@ impl GpuRenderer {
 
         // Read back results
         self.read_output().await
-    }
-
-    /// Render with progressive callback
-    pub async fn render_progressive<F>(&mut self, scene: &Scene, camera: &Camera, mut callback: F)
-    where
-        F: FnMut(&[Vec3], u32),
-    {
-        self.reset();
-
-        while self.sample_count < self.config.samples_per_pixel {
-            self.render_sample(scene, camera).await;
-            
-            // Read current state and call callback
-            let pixels = self.read_output().await;
-            callback(&pixels, self.sample_count);
-        }
     }
 
     /// Read output buffer
@@ -385,7 +488,8 @@ impl GpuRenderer {
             camera_v: [v.x, v.y, v.z, 0.0],
             lens_radius: camera.lens_radius(),
             sample_offset,
-            _padding: [0.0; 2],
+            sphere_count: self.sphere_count,
+            triangle_count: self.triangle_count,
         }
     }
 
@@ -419,10 +523,34 @@ mod tests {
     }
 
     #[test]
-    fn test_scene_validation() {
-        let scene = Scene::new();
-        let validation = SceneValidation::validate(&scene);
+    fn test_scene_validation_valid() {
+        let validation = SceneValidation::validate(100, 1000, 10);
         assert!(validation.valid);
         assert!(validation.errors.is_empty());
+    }
+
+    #[test]
+    fn test_scene_validation_too_many_spheres() {
+        let validation = SceneValidation::validate(MAX_SPHERES + 1, 0, 0);
+        assert!(!validation.valid);
+        assert!(!validation.errors.is_empty());
+    }
+
+    #[test]
+    fn test_gpu_sphere_size() {
+        // GpuSphere should be 32 bytes (8 floats)
+        assert_eq!(std::mem::size_of::<GpuSphere>(), 32);
+    }
+
+    #[test]
+    fn test_gpu_triangle_size() {
+        // GpuTriangle should be 48 bytes (12 floats)
+        assert_eq!(std::mem::size_of::<GpuTriangle>(), 48);
+    }
+
+    #[test]
+    fn test_gpu_material_size() {
+        // GpuMaterial should be 32 bytes (8 floats)
+        assert_eq!(std::mem::size_of::<GpuMaterial>(), 32);
     }
 }
