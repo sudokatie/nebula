@@ -1,6 +1,6 @@
 //! Axis-aligned bounding box
 
-use crate::math::{Vec3, Ray};
+use crate::math::{Vec3, Ray, Vec3x4, Ray4};
 
 /// Axis-aligned bounding box
 #[derive(Debug, Clone, Copy)]
@@ -111,6 +111,41 @@ impl AABB {
             2
         }
     }
+
+    /// Test 4 rays simultaneously (SIMD packet tracing)
+    /// Returns bitmask where bit i is set if ray i hits the box
+    #[inline]
+    pub fn hit_ray4(&self, ray4: &Ray4) -> u8 {
+        let mut mask = 0u8;
+
+        // Process each ray with precomputed inverse directions
+        for i in 0..4 {
+            let origin = Vec3::new(ray4.origins.x[i], ray4.origins.y[i], ray4.origins.z[i]);
+            let inv_dir = Vec3::new(
+                ray4.inv_directions.x[i],
+                ray4.inv_directions.y[i],
+                ray4.inv_directions.z[i],
+            );
+
+            if self.hit_precomputed(&origin, &inv_dir, ray4.t_min[i], ray4.t_max[i]) {
+                mask |= 1 << i;
+            }
+        }
+
+        mask
+    }
+
+    /// Test 4 rays with explicit min bounds (returns bool array)
+    #[inline]
+    pub fn hit_ray4_detailed(&self, ray4: &Ray4) -> [bool; 4] {
+        let mask = self.hit_ray4(ray4);
+        [
+            mask & 1 != 0,
+            mask & 2 != 0,
+            mask & 4 != 0,
+            mask & 8 != 0,
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +210,58 @@ mod tests {
     fn test_longest_axis() {
         let aabb = AABB::new(Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 3.0, 2.0));
         assert_eq!(aabb.longest_axis(), 1); // y is longest
+    }
+
+    #[test]
+    fn test_hit_ray4_all_hit() {
+        let aabb = AABB::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, 1.0));
+        
+        // Four rays all hitting the box
+        let origins = Vec3x4::new(
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::new(0.5, 0.0, 5.0),
+            Vec3::new(-0.5, 0.0, 5.0),
+            Vec3::new(0.0, 0.5, 5.0),
+        );
+        let directions = Vec3x4::splat(Vec3::new(0.0, 0.0, -1.0));
+        let ray4 = Ray4::new(origins, directions, [0.0; 4], [f32::INFINITY; 4]);
+        
+        let mask = aabb.hit_ray4(&ray4);
+        assert_eq!(mask, 0b1111); // All 4 rays hit
+    }
+
+    #[test]
+    fn test_hit_ray4_some_miss() {
+        let aabb = AABB::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, 1.0));
+        
+        // Mix of hitting and missing rays
+        let origins = Vec3x4::new(
+            Vec3::new(0.0, 0.0, 5.0),  // Hit
+            Vec3::new(5.0, 5.0, 5.0),  // Miss
+            Vec3::new(0.0, 0.0, 5.0),  // Hit
+            Vec3::new(-5.0, 0.0, 5.0), // Miss
+        );
+        let directions = Vec3x4::splat(Vec3::new(0.0, 0.0, -1.0));
+        let ray4 = Ray4::new(origins, directions, [0.0; 4], [f32::INFINITY; 4]);
+        
+        let mask = aabb.hit_ray4(&ray4);
+        assert_eq!(mask, 0b0101); // Rays 0 and 2 hit
+    }
+
+    #[test]
+    fn test_hit_ray4_detailed() {
+        let aabb = AABB::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, 1.0));
+        
+        let origins = Vec3x4::new(
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::new(5.0, 5.0, 5.0),
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::new(-5.0, 0.0, 5.0),
+        );
+        let directions = Vec3x4::splat(Vec3::new(0.0, 0.0, -1.0));
+        let ray4 = Ray4::new(origins, directions, [0.0; 4], [f32::INFINITY; 4]);
+        
+        let hits = aabb.hit_ray4_detailed(&ray4);
+        assert_eq!(hits, [true, false, true, false]);
     }
 }

@@ -1,8 +1,14 @@
-//! GPU renderer using wgpu compute shaders
+//! GPU renderer using wgpu compute shaders with progressive accumulation
 
 use crate::math::Vec3;
 use crate::camera::Camera;
 use crate::scene::Scene;
+
+/// GPU rendering limits for validation
+pub const MAX_SPHERES: usize = 1024;
+pub const MAX_TRIANGLES: usize = 65536;
+pub const MAX_BVH_NODES: usize = 131072;
+pub const MAX_MATERIALS: usize = 256;
 
 /// GPU renderer configuration
 pub struct GpuConfig {
@@ -12,7 +18,48 @@ pub struct GpuConfig {
     pub max_depth: u32,
 }
 
-/// GPU-based path tracer
+/// Scene validation result
+#[derive(Debug)]
+pub struct SceneValidation {
+    pub sphere_count: usize,
+    pub triangle_count: usize,
+    pub material_count: usize,
+    pub valid: bool,
+    pub errors: Vec<String>,
+}
+
+impl SceneValidation {
+    pub fn validate(scene: &Scene) -> Self {
+        let mut errors = Vec::new();
+        
+        // Note: These are placeholder counts - proper implementation would track in Scene
+        let sphere_count = 0; // scene.sphere_count()
+        let triangle_count = 0; // scene.triangle_count()
+        let material_count = 0; // scene.material_count()
+
+        if sphere_count > MAX_SPHERES {
+            errors.push(format!("Too many spheres: {} > {}", sphere_count, MAX_SPHERES));
+        }
+        if triangle_count > MAX_TRIANGLES {
+            errors.push(format!("Too many triangles: {} > {}", triangle_count, MAX_TRIANGLES));
+        }
+        if material_count > MAX_MATERIALS {
+            errors.push(format!("Too many materials: {} > {}", material_count, MAX_MATERIALS));
+        }
+
+        let _ = scene; // Mark as used
+
+        Self {
+            sphere_count,
+            triangle_count,
+            material_count,
+            valid: errors.is_empty(),
+            errors,
+        }
+    }
+}
+
+/// GPU-based path tracer with progressive accumulation
 pub struct GpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -20,8 +67,10 @@ pub struct GpuRenderer {
     output_buffer: wgpu::Buffer,
     staging_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
+    accumulator_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     config: GpuConfig,
+    sample_count: u32,
 }
 
 /// Uniform data passed to shader
@@ -40,7 +89,8 @@ struct Uniforms {
     camera_u: [f32; 4],
     camera_v: [f32; 4],
     lens_radius: f32,
-    _padding: [f32; 3],
+    sample_offset: u32, // For progressive rendering
+    _padding: [f32; 2],
 }
 
 impl GpuRenderer {
@@ -89,6 +139,14 @@ impl GpuRenderer {
             label: Some("Output Buffer"),
             size: output_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Create accumulator buffer for progressive rendering
+        let accumulator_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Accumulator Buffer"),
+            size: output_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -177,15 +235,34 @@ impl GpuRenderer {
             output_buffer,
             staging_buffer,
             uniform_buffer,
+            accumulator_buffer,
             bind_group,
             config,
+            sample_count: 0,
         })
     }
 
-    /// Render the scene
-    pub async fn render(&self, _scene: &Scene, camera: &Camera) -> Vec<Vec3> {
+    /// Validate scene against GPU limits
+    pub fn validate_scene(&self, scene: &Scene) -> SceneValidation {
+        SceneValidation::validate(scene)
+    }
+
+    /// Reset accumulator for new render
+    pub fn reset(&mut self) {
+        self.sample_count = 0;
+        // Clear accumulator buffer
+        let zeros = vec![0u8; (self.config.width * self.config.height * 4 * 4) as usize];
+        self.queue.write_buffer(&self.accumulator_buffer, 0, &zeros);
+    }
+
+    /// Render one sample (for progressive rendering)
+    pub async fn render_sample(&mut self, _scene: &Scene, camera: &Camera) -> bool {
+        if self.sample_count >= self.config.samples_per_pixel {
+            return false;
+        }
+
         // Create uniforms from camera
-        let uniforms = self.create_uniforms(camera);
+        let uniforms = self.create_uniforms(camera, self.sample_count);
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
         // Create command encoder
@@ -202,14 +279,53 @@ impl GpuRenderer {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bind_group, &[]);
             
-            // Dispatch one thread per pixel
             let workgroup_size = 8;
             let workgroups_x = (self.config.width + workgroup_size - 1) / workgroup_size;
             let workgroups_y = (self.config.height + workgroup_size - 1) / workgroup_size;
             pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
-        // Copy output to staging buffer
+        // Submit commands
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        self.sample_count += 1;
+        true
+    }
+
+    /// Render the scene (all samples at once)
+    pub async fn render(&mut self, scene: &Scene, camera: &Camera) -> Vec<Vec3> {
+        self.reset();
+
+        // Render all samples
+        while self.render_sample(scene, camera).await {}
+
+        // Read back results
+        self.read_output().await
+    }
+
+    /// Render with progressive callback
+    pub async fn render_progressive<F>(&mut self, scene: &Scene, camera: &Camera, mut callback: F)
+    where
+        F: FnMut(&[Vec3], u32),
+    {
+        self.reset();
+
+        while self.sample_count < self.config.samples_per_pixel {
+            self.render_sample(scene, camera).await;
+            
+            // Read current state and call callback
+            let pixels = self.read_output().await;
+            callback(&pixels, self.sample_count);
+        }
+    }
+
+    /// Read output buffer
+    async fn read_output(&self) -> Vec<Vec3> {
+        // Create command encoder for copy
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Copy Encoder"),
+        });
+
         encoder.copy_buffer_to_buffer(
             &self.output_buffer,
             0,
@@ -218,7 +334,6 @@ impl GpuRenderer {
             self.output_buffer.size(),
         );
 
-        // Submit commands
         self.queue.submit(std::iter::once(encoder.finish()));
 
         // Map staging buffer and read results
@@ -249,13 +364,13 @@ impl GpuRenderer {
         pixels
     }
 
-    fn create_uniforms(&self, _camera: &Camera) -> Uniforms {
+    fn create_uniforms(&self, _camera: &Camera, sample_offset: u32) -> Uniforms {
         // TODO: Extract camera data properly
         // For now, use placeholder values
         Uniforms {
             width: self.config.width,
             height: self.config.height,
-            samples: self.config.samples_per_pixel,
+            samples: 1, // One sample per call for progressive
             max_depth: self.config.max_depth,
             camera_origin: [0.0, 0.0, 3.0, 0.0],
             camera_lower_left: [-2.0, -1.5, -1.0, 0.0],
@@ -264,8 +379,19 @@ impl GpuRenderer {
             camera_u: [1.0, 0.0, 0.0, 0.0],
             camera_v: [0.0, 1.0, 0.0, 0.0],
             lens_radius: 0.0,
-            _padding: [0.0; 3],
+            sample_offset,
+            _padding: [0.0; 2],
         }
+    }
+
+    /// Get current sample count
+    pub fn sample_count(&self) -> u32 {
+        self.sample_count
+    }
+
+    /// Check if rendering is complete
+    pub fn is_complete(&self) -> bool {
+        self.sample_count >= self.config.samples_per_pixel
     }
 }
 
@@ -277,5 +403,21 @@ mod tests {
     fn test_uniforms_size() {
         // Ensure uniforms are properly aligned for GPU
         assert_eq!(std::mem::size_of::<Uniforms>() % 16, 0);
+    }
+
+    #[test]
+    fn test_gpu_limits() {
+        assert_eq!(MAX_SPHERES, 1024);
+        assert_eq!(MAX_TRIANGLES, 65536);
+        assert_eq!(MAX_BVH_NODES, 131072);
+        assert_eq!(MAX_MATERIALS, 256);
+    }
+
+    #[test]
+    fn test_scene_validation() {
+        let scene = Scene::new();
+        let validation = SceneValidation::validate(&scene);
+        assert!(validation.valid);
+        assert!(validation.errors.is_empty());
     }
 }

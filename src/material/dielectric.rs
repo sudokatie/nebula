@@ -53,4 +53,67 @@ impl Material for Dielectric {
             scattered: Ray::new(hit.point, direction),
         })
     }
+
+    fn eval(&self, _ray_in: &Ray, _hit: &HitRecord, _dir_out: &Vec3) -> Vec3 {
+        // Delta distribution - eval is technically infinite at the perfect direction
+        // Return 1.0 for the sampled direction (handled specially)
+        Vec3::one()
+    }
+
+    fn pdf(&self, _ray_in: &Ray, _hit: &HitRecord, _dir_out: &Vec3) -> f32 {
+        // Delta distribution has infinite PDF at the exact direction
+        // Return 1.0 to cancel with eval in rendering equation
+        1.0
+    }
+
+    fn is_specular(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_dielectric_scatter() {
+        let glass = Dielectric::new(1.5);
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+        
+        let ray = Ray::new(Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -1.0, 0.0));
+        let hit = HitRecord {
+            t: 1.0,
+            point: Vec3::zero(),
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            uv: (0.0, 0.0),
+            front_face: true,
+            material_id: 0,
+        };
+        
+        let scatter = glass.scatter(&ray, &hit, &mut rng);
+        assert!(scatter.is_some());
+    }
+
+    #[test]
+    fn test_dielectric_is_specular() {
+        let glass = Dielectric::new(1.5);
+        assert!(glass.is_specular());
+    }
+
+    #[test]
+    fn test_reflectance_normal_incidence() {
+        // At normal incidence, reflectance should be (n-1)^2 / (n+1)^2
+        let r = Dielectric::reflectance(1.0, 1.5);
+        let ratio: f32 = (1.5 - 1.0) / (1.5 + 1.0);
+        let expected = ratio * ratio;
+        assert!((r - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_reflectance_grazing_angle() {
+        // At grazing angle, reflectance should approach 1
+        let r = Dielectric::reflectance(0.0, 1.5);
+        assert!(r > 0.99);
+    }
 }

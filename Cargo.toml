@@ -38,6 +38,7 @@ gpu = ["wgpu", "pollster", "bytemuck"]
 
 [dev-dependencies]
 criterion = "0.5"
+tempfile = "3.10"
 
 [[bench]]
 name = "render_bench"

@@ -8,4 +8,4 @@ pub use cpu::CpuRenderer;
 mod gpu;
 
 #[cfg(feature = "gpu")]
-pub use gpu::{GpuRenderer, GpuConfig};
+pub use gpu::{GpuRenderer, GpuConfig, SceneValidation, MAX_SPHERES, MAX_TRIANGLES, MAX_BVH_NODES, MAX_MATERIALS};
