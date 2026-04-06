@@ -1,6 +1,9 @@
-//! Image output with tone mapping
+//! Image output with tone mapping and denoising
+
+pub mod denoise;
 
 use crate::math::Vec3;
+pub use denoise::{bilateral_filter, adaptive_bilateral, joint_bilateral, DenoiseConfig};
 use std::io::{self, Write, BufWriter};
 use std::fs::File;
 use std::path::Path;

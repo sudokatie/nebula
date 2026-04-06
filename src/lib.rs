@@ -44,5 +44,8 @@ pub mod prelude {
     pub use crate::accel::{AABB, BVH, RayPacket, HitPacket};
     pub use crate::render::{CpuRenderer, GpuRenderer, GpuConfig};
     pub use crate::integrator::PathIntegrator;
-    pub use crate::output::{ToneMap, save_png, save_ppm, save_hdr, save_exr};
+    pub use crate::output::{
+        ToneMap, save_png, save_ppm, save_hdr, save_exr,
+        bilateral_filter, adaptive_bilateral, joint_bilateral, DenoiseConfig,
+    };
 }
