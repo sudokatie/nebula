@@ -30,6 +30,7 @@ pub mod output;
 pub mod render;
 pub mod sampler;
 pub mod scene;
+pub mod volume;
 
 /// Prelude - commonly used types
 pub mod prelude {
@@ -47,5 +48,10 @@ pub mod prelude {
     pub use crate::output::{
         ToneMap, save_png, save_ppm, save_hdr, save_exr,
         bilateral_filter, adaptive_bilateral, joint_bilateral, DenoiseConfig,
+    };
+    pub use crate::volume::{
+        Volume, VolumeSample, Transmittance,
+        HomogeneousVolume, HeterogeneousVolume,
+        PhaseFunction, HenyeyGreenstein, Isotropic,
     };
 }
