@@ -8,6 +8,8 @@ A physically-based path tracer with CPU and GPU rendering.
 - Materials: Lambertian (diffuse), Metal, Dielectric (glass), Emissive
 - BVH acceleration with optimized AABB intersection
 - Depth of field camera
+- Volumetric rendering: homogeneous and heterogeneous volumes, phase functions (Isotropic, Henyey-Greenstein)
+- Denoising: bilateral filter, adaptive bilateral, joint bilateral (normal/albedo guides)
 - JSON scene format
 - CPU rendering with rayon parallelism
 - GPU rendering with wgpu compute shaders (optional)
@@ -87,6 +89,7 @@ nebula/
 - BVH with median split
 - Rayon for CPU parallelism
 - wgpu compute shaders for GPU
+- 118 tests
 
 ## License
 
